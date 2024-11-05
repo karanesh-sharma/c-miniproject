@@ -1,0 +1,321 @@
+#include <iostream>
+#include <fstream>
+#include <limits>
+#include <unordered_set>
+
+using namespace std;
+
+class ProductManager {
+    string itemID, itemName;
+    int itemQuantity, itemPrice;
+    int totalAmount = 0;
+    fstream file;
+    unordered_set<string> existingIDs;  // Stores unique product IDs
+
+public:
+    void showMainMenu();
+    void accessAdmin();
+    void addProduct();
+    void viewProducts();
+    void deleteProduct();
+    void buyProduct();
+    
+private:
+    bool openFile(fstream& file, const string& filename, ios_base::openmode mode);
+    void clearInputStream();
+    void displayProductHeaders();
+    bool validateAdminPassword();
+    bool isUniqueProductID(const string& id);
+    void loadExistingProductIDs();
+    bool checkProductExists(const string& id);  // New helper function
+} manager;
+
+int main() {
+    manager.showMainMenu();
+    return 0;
+}
+
+// Loads existing product IDs from file to enforce uniqueness
+void ProductManager::loadExistingProductIDs() {
+    fstream tempFile;
+    if (openFile(tempFile, "data.txt", ios::in)) {
+        string id;
+        while (tempFile >> id >> itemName >> itemQuantity >> itemPrice) {
+            existingIDs.insert(id);
+        }
+        tempFile.close();
+    }
+}
+
+// Main menu for customers and admin
+void ProductManager::showMainMenu() {
+    char choice;
+    loadExistingProductIDs();
+
+    while (true) {
+        cout << "Press A --> Access Admin\n";
+        cout << "Press 1 --> Start Shopping\n";
+        cout << "Press 0 --> Exit\n";
+        cout << "Enter your choice: ";
+        cin >> choice;
+
+        switch (choice) {
+            case 'A':
+                accessAdmin();
+                break;
+            case '1': 
+                viewProducts();
+                buyProduct();
+                break;
+            case '0':
+                cout << "Exiting...\n";
+                return;
+            default:
+                cout << "Invalid selection..!" << endl;
+                break;
+        }
+    }
+}
+
+// Admin access with password validation
+void ProductManager::accessAdmin() {
+    if (!validateAdminPassword()) {
+        cout << "Access denied." << endl;
+        return;
+    }
+    
+    char adminChoice;
+    while (true) {
+        cout << "\nAdmin Access Granted!\n";
+        cout << "Press 1 --> Add Product\n";
+        cout << "Press 2 --> Delete Product\n";
+        cout << "Press 0 --> Return to Main Menu\n";
+        cout << "Enter your choice: ";
+        cin >> adminChoice;
+
+        switch (adminChoice) {
+            case '1':
+                addProduct();
+                break;
+            case '2':
+                deleteProduct();
+                break;
+            case '0':
+                cout << "Returning to Main Menu...\n";
+                return;
+            default:
+                cout << "Invalid admin selection..!" << endl;
+                break;
+        }
+    }
+}
+
+// Validates admin password
+bool ProductManager::validateAdminPassword() {
+    string password;
+    cout << "Enter Admin Password: ";
+    cin >> password;
+    return password == "1234";  // For simplicity, hardcoded password
+}
+
+// Adds a new product ensuring unique ID
+void ProductManager::addProduct() {
+    cout << "Enter Product ID: ";
+    cin >> itemID;
+    
+    // Check if Product ID is unique
+    while (!isUniqueProductID(itemID)) {
+        cout << "Product ID already exists. Enter a unique Product ID: ";
+        cin >> itemID;
+    }
+
+    cout << "Enter Product Name: ";
+    cin.ignore();
+    getline(cin, itemName);
+
+    cout << "Enter Product Quantity: ";
+    while (!(cin >> itemQuantity)) {
+        cout << "Invalid input! Please enter a number: ";
+        clearInputStream();
+    }
+
+    cout << "Enter Product Price: ";
+    while (!(cin >> itemPrice)) {
+        cout << "Invalid input! Please enter a number: ";
+        clearInputStream();
+    }
+
+    if (openFile(file, "data.txt", ios::out | ios::app)) {
+        file << itemID << "\t" << itemName << "\t" << itemQuantity << "\t" << itemPrice << endl;
+        file.close();
+        existingIDs.insert(itemID);  // Add to the set of existing IDs
+        cout << "Product added successfully!\n";
+    }
+}
+
+// Ensures Product ID uniqueness
+bool ProductManager::isUniqueProductID(const string& id) {
+    return existingIDs.find(id) == existingIDs.end();
+}
+
+// Displays available products
+void ProductManager::viewProducts() {
+    if (openFile(file, "data.txt", ios::in)) {
+        displayProductHeaders();
+        bool productsExist = false;
+
+        while (file >> itemID >> itemName >> itemQuantity >> itemPrice) {
+            cout << itemID << "\t\t" << itemName << "\t\t" << itemQuantity << "\t\t" << itemPrice << endl;
+            productsExist = true;
+        }
+
+        if (!productsExist) {
+            cout << "No products in the list.\n";
+        }
+        file.close();
+    }
+}
+
+// Deletes a product and updates the unique ID set
+void ProductManager::deleteProduct() {
+    cout << "Enter Product ID to delete: ";
+    string deleteID;
+    cin >> deleteID;
+
+    bool productFound = false;
+
+    // Open the main data file and create a temporary file for writing updated data
+    if (openFile(file, "data.txt", ios::in)) {
+        fstream tempFile;
+        if (openFile(tempFile, "temp.txt", ios::out | ios::trunc)) {
+            string currentID, currentName;
+            int currentQuantity, currentPrice;
+
+            while (file >> currentID >> currentName >> currentQuantity >> currentPrice) {
+                if (currentID == deleteID) {
+                    // Product to delete found
+                    cout << "Product " << currentName << " deleted successfully!" << endl;
+                    productFound = true;
+                    existingIDs.erase(currentID);  // Remove from the set of existing IDs
+                    // Do not write this product to tempFile, effectively deleting it
+                } else {
+                    // Write all other products to the temporary file
+                    tempFile << currentID << "\t" << currentName << "\t" << currentQuantity << "\t" << currentPrice << endl;
+                }
+            }
+
+            // Notify if product was not found
+            if (!productFound) {
+                cout << "Product not found!" << endl;
+            }
+
+            // Close the files
+            file.close();
+            tempFile.close();
+
+            // Replace original data file with the updated temp file
+            remove("data.txt");
+            rename("temp.txt", "data.txt");
+        }
+    }
+}
+
+// Checks if a product with the given ID exists in the data file
+bool ProductManager::checkProductExists(const string& id) {
+    return existingIDs.find(id) != existingIDs.end();
+}
+
+// Allows customers to buy a product with stock validation
+void ProductManager::buyProduct() {
+    char choice = 'Y';
+    totalAmount = 0;
+
+    while (choice == 'Y' || choice == 'y') {
+        cout << "Enter Product ID: ";
+        cin >> itemID;
+
+        // Check if product exists
+        if (!checkProductExists(itemID)) {
+            cout << "Product not found!" << endl;
+            continue;
+        }
+
+        int quantity;
+        cout << "Enter Quantity: ";
+        while (!(cin >> quantity)) {
+            cout << "Invalid input! Please enter a number: ";
+            clearInputStream();
+        }
+
+        // Open files for reading and temporary storage
+        if (openFile(file, "data.txt", ios::in)) {
+            fstream tempFile;
+            if (openFile(tempFile, "temp.txt", ios::out | ios::trunc)) {
+                bool productFound = false;
+                string currentID, currentName;
+                int currentQuantity, currentPrice;
+
+                while (file >> currentID >> currentName >> currentQuantity >> currentPrice) {
+                    if (currentID == itemID) {
+                        productFound = true;
+                        if (currentQuantity >= quantity) {
+                            // Sufficient stock, process purchase
+                            currentQuantity -= quantity;
+                            int itemTotal = quantity * currentPrice;
+                            totalAmount += itemTotal;
+
+                            cout << "----- Payment Bill -----" << endl;
+                            cout << "Item: " << currentName << " | Quantity: " << quantity << " | Price: " << currentPrice << " each" << endl;
+                            cout << "Total for this item: " << itemTotal << endl;
+                            cout << "Cumulative Total Purchase Amount: " << totalAmount << endl;
+                            cout << "------------------------" << endl;
+                        } else {
+                            // Insufficient stock, display warning and skip billing
+                            cout << "Insufficient stock for " << currentName << "! Available quantity: " << currentQuantity << endl;
+                        }
+                    }
+                    // Write current product details to the temp file, updated or not
+                    tempFile << currentID << "\t" << currentName << "\t" << currentQuantity << "\t" << currentPrice << endl;
+                }
+
+                if (!productFound) {
+                    cout << "Product not found!" << endl;
+                }
+
+                file.close();
+                tempFile.close();
+
+                // Update main file with changes from temp
+                remove("data.txt");
+                rename("temp.txt", "data.txt");
+            }
+        }
+
+        // Ask if user wants to continue shopping
+        cout << "\nContinue shopping? (Y / N): ";
+        cin >> choice;
+    }
+}
+
+// Opens a file and checks if it opened successfully
+bool ProductManager::openFile(fstream& file, const string& filename, ios_base::openmode mode) {
+    file.open(filename, mode);
+    if (!file) {
+        cout << "Error accessing file: " << filename << endl;
+        return false;
+    }
+    return true;
+}
+
+// Clears cin input stream to handle invalid inputs
+void ProductManager::clearInputStream() {
+    cin.clear();
+    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+}
+
+// Displays product headers in a tabular format
+void ProductManager::displayProductHeaders() {
+    cout << "--------------" << endl;
+    cout << "ProductID\tProduct Name\tQuantity\tProduct Price" << endl;
+    cout << "--------------" << endl;
+}
